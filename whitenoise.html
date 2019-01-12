@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en-us">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head>
+<body>
+<div class="spinner" id='spinner'></div>
+<div class="emscripten" id="status">Downloading...</div>
+<span id='controls'>
+  <span><input type="button" value="start" onclick="Module.start()">
+  </span>
+</span>
+
+<div class="emscripten">
+    <progress value="0" max="100" id="progress" hidden=1></progress>
+</div>
+<textarea id="output" rows="12" cols="80"></textarea>
+<script type='text/javascript'>
+      var statusElement = document.getElementById('status');
+      var progressElement = document.getElementById('progress');
+      var spinnerElement = document.getElementById('spinner');
+
+      var Module = {
+        preRun: [],
+        postRun: [],
+        print: (function() {
+          var element = document.getElementById('output');
+          if (element) element.value = ''; // clear browser cache
+          return function(text) {
+            if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+            // These replacements are necessary if you render to raw HTML
+            //text = text.replace(/&/g, "&amp;");
+            //text = text.replace(/</g, "&lt;");
+            //text = text.replace(/>/g, "&gt;");
+            //text = text.replace('\n', '<br>', 'g');
+            console.log(text);
+            if (element) {
+              element.value += text + "\n";
+              element.scrollTop = element.scrollHeight; // focus on bottom
+            }
+          };
+        })(),
+        printErr: function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          console.error(text);
+        },
+        setStatus: function(text) {
+          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+          if (text === Module.setStatus.last.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Module.setStatus.last.time < 30) return; // if this is a progress update, skip it if too soon
+          Module.setStatus.last.time = now;
+          Module.setStatus.last.text = text;
+          if (m) {
+            text = m[1];
+            progressElement.value = parseInt(m[2])*100;
+            progressElement.max = parseInt(m[4])*100;
+            progressElement.hidden = false;
+            spinnerElement.hidden = false;
+          } else {
+            progressElement.value = null;
+            progressElement.max = null;
+            progressElement.hidden = true;
+            if (!text) spinnerElement.style.display = 'none';
+          }
+          statusElement.innerHTML = text;
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+      Module.setStatus('Downloading...');
+      window.onerror = function(event) {
+        // TODO: do not warn on ok events like simulating an infinite loop or exitStatus
+        Module.setStatus('Exception thrown, see JavaScript console');
+        spinnerElement.style.display = 'none';
+        Module.setStatus = function(text) {
+          if (text) Module.printErr('[post-exception status] ' + text);
+        };
+      };
+
+///////////////////////
+
+    var getAudioContext = function() {
+        try {
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            return new AudioContext();
+        } catch (error) {
+            alert('Web Audio API is not supported in this browser');
+        }
+    };
+
+    var audioContext = getAudioContext();
+
+    var getAudioProcessNode = function() {
+        var inputChannelCount = 0; // _getInputChannelCount(csound_obj_);
+        var outputChannelCount = 1; // _getOutputChannelCount(csound_obj_);
+        var audioProcessNode = audioContext.createScriptProcessor(0, inputChannelCount, outputChannelCount);
+        bufferFrameCount = audioProcessNode.bufferSize;
+        console.info("audioProcessNode.bufferSize (WebAudio frames per buffer): " +  bufferFrameCount);
+        audioProcessNode.inputCount = inputChannelCount;
+        audioProcessNode.outputCount = outputChannelCount;
+        return audioProcessNode;
+    };
+
+    Module.start = function() {
+//    var _getInputBuffer  = Module.cwrap('Scala_getInputBuffer', 'number', []);
+    var _getOutputBuffer = Module.cwrap('Scala_getOutputBuffer', 'number', []);
+    var _performKsmps = Module.cwrap('Scala_performKsmps', 'number', []);
+
+        var ksmps = 64;
+        var audioProcessNode = getAudioProcessNode();
+        var inputChannelN = audioProcessNode.inputCount;
+        var outputChannelN = audioProcessNode.outputCount;
+        // var spin = _getInputBuffer(); // (csound_obj_);
+        // var spinBuffer = new Float64Array(Module.HEAP8.buffer, spin, ksmps * inputChannelN);
+        var spout = _getOutputBuffer(); // (csound_obj_);
+        var spoutBuffer = new Float64Array(Module.HEAP8.buffer, spout, ksmps * outputChannelN);
+        var zerodBFS = 1.0; // _getZerodBFS(csound_obj_);
+        // that.running = true;
+        var csoundFrameI = 0;
+
+        audioProcessNode.connect(audioContext.destination);
+        audioProcessNode.onaudioprocess = function(audioProcessEvent) {
+            var inputBuffer = audioProcessEvent.inputBuffer;
+            var outputBuffer = audioProcessEvent.outputBuffer;
+            var hostFrameN = outputBuffer.length;
+            var result = 0;
+            for (var hostFrameI = 0; hostFrameI < hostFrameN; hostFrameI++) {
+                // for (var inputChannelI = 0; inputChannelI < inputChannelN; inputChannelI++) {
+                //     var inputChannelBuffer = inputBuffer.getChannelData(inputChannelI);
+                //     spinBuffer[(csoundFrameI * inputChannelN) + inputChannelI] = inputChannelBuffer[hostFrameI] * zerodBFS;
+                // }
+                for (var outputChannelI = 0; outputChannelI < outputChannelN; outputChannelI++) {
+                    var outputChannelBuffer = outputBuffer.getChannelData(outputChannelI);
+                    outputChannelBuffer[hostFrameI] = spoutBuffer[(csoundFrameI * outputChannelN) + outputChannelI] / zerodBFS;
+                    spoutBuffer[(csoundFrameI * outputChannelN) + outputChannelI] = 0.0;
+                }
+                csoundFrameI++
+                if (csoundFrameI === ksmps) {
+                    csoundFrameI = 0;
+                    result = _performKsmps(); // (csound_obj_);
+//                    if (result !== 0) {
+//                        compiled = false;
+//                        that.stop();
+//                    }
+                }
+            }
+        };
+        Module.print("Believe it or not, that white noise is coming from Scala Native...");
+    }
+
+///////////////////////
+    </script>
+<script async type="text/javascript" src="index.js"></script>
+</body>
+</html>
