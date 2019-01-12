@@ -8,7 +8,8 @@
 <div class="spinner" id='spinner'></div>
 <div class="emscripten" id="status">Downloading...</div>
 <span id='controls'>
-  <span><input type="button" value="start" onclick="Module.start()">
+  <span><input type="button" value="Start Audio" onclick="Module.start()">
+  <span><input type="button" value="Stop Audio" onclick="Module.stop()">
   </span>
 </span>
 
@@ -83,7 +84,7 @@
         };
       };
 
-///////////////////////
+/////////////////////// mostly stolen from csound :)
 
     var getAudioContext = function() {
         try {
@@ -107,7 +108,13 @@
         return audioProcessNode;
     };
 
+    Module.stop = function() {};
+
+    Module.running = false;
+
     Module.start = function() {
+      if (Module.running) return;
+
 //    var _getInputBuffer  = Module.cwrap('Scala_getInputBuffer', 'number', []);
     var _getOutputBuffer = Module.cwrap('Scala_getOutputBuffer', 'number', []);
     var _performKsmps = Module.cwrap('Scala_performKsmps', 'number', []);
@@ -121,8 +128,8 @@
         var spout = _getOutputBuffer(); // (csound_obj_);
         var spoutBuffer = new Float64Array(Module.HEAP8.buffer, spout, ksmps * outputChannelN);
         var zerodBFS = 1.0; // _getZerodBFS(csound_obj_);
-        // that.running = true;
-        var csoundFrameI = 0;
+        Module.running = true;
+        var scalaFrameI = 0;
 
         audioProcessNode.connect(audioContext.destination);
         audioProcessNode.onaudioprocess = function(audioProcessEvent) {
@@ -133,25 +140,31 @@
             for (var hostFrameI = 0; hostFrameI < hostFrameN; hostFrameI++) {
                 // for (var inputChannelI = 0; inputChannelI < inputChannelN; inputChannelI++) {
                 //     var inputChannelBuffer = inputBuffer.getChannelData(inputChannelI);
-                //     spinBuffer[(csoundFrameI * inputChannelN) + inputChannelI] = inputChannelBuffer[hostFrameI] * zerodBFS;
+                //     spinBuffer[(scalaFrameI * inputChannelN) + inputChannelI] = inputChannelBuffer[hostFrameI] * zerodBFS;
                 // }
                 for (var outputChannelI = 0; outputChannelI < outputChannelN; outputChannelI++) {
                     var outputChannelBuffer = outputBuffer.getChannelData(outputChannelI);
-                    outputChannelBuffer[hostFrameI] = spoutBuffer[(csoundFrameI * outputChannelN) + outputChannelI] / zerodBFS;
-                    spoutBuffer[(csoundFrameI * outputChannelN) + outputChannelI] = 0.0;
+                    outputChannelBuffer[hostFrameI] = spoutBuffer[(scalaFrameI * outputChannelN) + outputChannelI] / zerodBFS;
+                    spoutBuffer[(scalaFrameI * outputChannelN) + outputChannelI] = 0.0;
                 }
-                csoundFrameI++
-                if (csoundFrameI === ksmps) {
-                    csoundFrameI = 0;
+                scalaFrameI++
+                if (scalaFrameI === ksmps) {
+                    scalaFrameI = 0;
                     result = _performKsmps(); // (csound_obj_);
-//                    if (result !== 0) {
+                    if (result !== 0) {
 //                        compiled = false;
-//                        that.stop();
-//                    }
+                        that.stop();
+                    }
                 }
             }
         };
-        Module.print("Believe it or not, that white noise is coming from Scala Native...");
+        Module.print("Note: the white noise is coming from Scala Native...");
+
+        Module.stop = function() {
+            audioProcessNode.disconnect();
+            audioProcessNode.onaudioprocess = null;
+            Module.running = false;
+        };
     }
 
 ///////////////////////

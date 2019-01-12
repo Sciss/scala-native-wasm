@@ -27,3 +27,9 @@ Current challenges:
 
 Currently we can invoke the Scala function using `Module["asm"]["_call_scala_func"].apply(null)`. There is
 probably a better way, I have to figure out how to use [`cwrap`](https://kripken.github.io/emscripten-site/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-ccall-cwrap) instead.
+
+To build and test the audio-example:
+
+    sbt nativeLink
+    ./experiment.sh
+    xdg-open whitenoise.html
