@@ -25,10 +25,28 @@ Current challenges:
   to SN using `@extern`. Then Scala's `main` method can store the needed callback functions by
   calling the C glue code, and the glue code itself again exports a function callable from JavaScript.
 
-Currently we can invoke the Scala function using `Module["asm"]["_call_scala_func"].apply(null)`. There is
-probably a better way, I have to figure out how to use [`cwrap`](https://kripken.github.io/emscripten-site/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-ccall-cwrap) instead.
+### My build instructions
 
-To build and test the audio-example:
+To publish the patched version of Scala Native:
+
+    git clone git@github.com:shadaj/scala-native.git shadaj-scala-native
+    cd shadaj-scala-native
+    git checkout new-32-bit-support
+    sbt rebuild_x32
+
+Install emscripten like this: https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html , i.e.
+assuming you have already installed `nodejs`, `cmake`, java, `python2.7` (`sudo apt install` these):
+
+    git clone https://github.com/juj/emsdk.git
+    cd emsdk
+    ./emsdk install latest
+
+Then to prepare emcc:
+
+    ./emsdk activate latest
+    source ./emsdk_env.sh
+
+To build and test the audio-example, go back into scala-native-wasm directory, and
 
     sbt nativeLink
     ./experiment.sh
