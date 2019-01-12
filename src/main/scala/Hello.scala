@@ -1,3 +1,6 @@
 object Hello extends App {
-  println("Hello, World from Scala Native in WebAssembly!")
+
+  println("Hello from Scala Native in WebAssembly!")
+
+  // def int_sqrt(x: CInt): CDouble = Math.sqrt(x)
 }
